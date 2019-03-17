@@ -1,88 +1,89 @@
-import gspread as gs
 import datetime as dt
 from datetime import *
 import sys
 from oauth2client.service_account import ServiceAccountCredentials
 from googleapiclient.discovery import build
-#from google_auth_oauthlib.flow import InstalledAppFlow
 from google.auth.transport.requests import Request
 from googleapiclient import discovery
 
 
 scope = ['https://spreadsheets.google.com/feeds', 'https://www.googleapis.com/auth/drive']
 creds = ServiceAccountCredentials.from_json_keyfile_name('client_secret.json', scope)
-gc = gs.authorize(creds)
 service = discovery.build('sheets', 'v4', credentials=creds)
- 
-# Open spreadsheet
-wks = gc.open("Work + Tutoring").sheet1
 
 # Spreadsheet ID
 spreadsheetId = '1077v4MI09ZDjdiH8ikNJg55nN0qHAXJiqNI6QzIxEgk'
 
 dateformat = '"%m/%d/%Y %H:%M:%S"'
 
-def getEarnings(earningStr):
+
+def getEarnings(earningStr, total=False): # Total is false by defaul
 	getSheet = 0 # default sheet is first sheet
+	earningStr = earningStr.lower()
 
 	if earningStr == 'minju':
 		getSheet = 0
+		range_ = 'Minju!'
 	elif earningStr == 'minsuk':
 		getSheet = 1741513205
+		range_ = 'Minsuk!'
 	else:
 		print("No student named " + earningStr + "!")
 		return None # exits method without returning anything
 
-	# The ID of the spreadsheet to retrieve data from.
-	spreadsheet_id = getSheet 
-
 	# The A1 notation of the values to retrieve.
-	range_ = convertToA1(1, 8) + ':' + convertToA1(1, 8)
+	range_ = range_ + convertToA1(1, 8)
 
-	# How values should be represented in the output.
-	# The default render option is ValueRenderOption.FORMATTED_VALUE.
-	value_render_option = 'UNFORMATTED_VALUE'
+	if total == True:
+		valRenderOption = 'UNFORMATTED_VALUE'
+	else:
+		valRenderOption = 'FORMATTED_VALUE'
 
-	request = service.spreadsheets().values().get(spreadsheetId=spreadsheet_id, range=range_, valueRenderOption=value_render_option)
+	request = service.spreadsheets().values().get(spreadsheetId=spreadsheetId, range=range_, valueRenderOption=valRenderOption)
 	response = request.execute()
 
-	print(response)
+	return(response['values'][0][0])
 
 # need to change
 def getTotalEarnings():
-	getEarnings('minju') + getEarnings('minsuk')
+	rawEarning = getEarnings('minju', True) + getEarnings('minsuk', True)
+	print("₩{:,}".format(rawEarning))
 
-
-
-
-	getRequest = service.spreadsheets().getByDataFilter(spreadsheetId=spreadsheet_id, body=get_spreadsheet_by_data_filter_request_body)
-	response = request.execute()
-	# Position of Earnings Cell
-	earningsRow = wks.find("Total Earnings").row 
-	earningsCol = wks.find("Total Earnings").col
-	print(wks.cell(earningsRow, earningsCol + 1).value)
 
 # need to change
-def calcUnpaidHrs():
-	unpaidSec = 0
-	# Column containing whether I was paid or not
-	# payCol = wks.find("Paid").col
-	notPaidCells = wks.findall("N")
-	# Non-paid Cell = NPC, containing how long each session
-	firstNPC = convertToA1(notPaidCells[0].row, notPaidCells[0].col - 1)
-	lastNPC = convertToA1(notPaidCells[len(notPaidCells) - 1].row, notPaidCells[len(notPaidCells) - 1].col - 1)
+def calcUnpaidHrs(unpaidStr):
+	getSheet = 0
+	unpaidStr = unpaidStr.lower()
 
-	NPCRange = firstNPC + ':' + lastNPC
+	if unpaidStr == 'minju':
+		getSheet = 0
+		range_ = 'Minju!'
+	elif unpaidStr == 'minsuk':
+		getSheet = 1741513205
+		range_ = 'Minsuk!'
+	else:
+		print("No student named " + unpaidStr + "!")
+		return None # exits method without returning anything
 
-	timeFetch = wks.range(NPCRange)
+	range_ = range_ + 'D2:E'
 
-	# Calculate unpaid time in terms of seconds
-	for time in timeFetch:
-		unpaidSec += convertTimeToSec(time.value)
+	valRenderOption = 'UNFORMATTED_VALUE'
 
-	# Change time from seconds to hours in string form
-	unpaidHrs = str(dt.timedelta(seconds=unpaidSec))
-	print(unpaidHrs)
+	request = service.spreadsheets().values().get(spreadsheetId=spreadsheetId, range=range_, valueRenderOption=valRenderOption)
+	response = request.execute()
+
+	values = response['values']
+
+	unpaidDays = 0 # Initialise variable
+
+	for i in values:
+		if i[1] == 'N':
+			unpaidDays += i[0]
+
+	#	Change time from days to hours in string form
+	unpaidHrs = str(dt.timedelta(days=unpaidDays))
+
+	return unpaidHrs
 
 
 def convertToA1(rows, col):
@@ -396,10 +397,24 @@ def main():
 			print("Here are the list of commands you can use: \n - Total Earnings \n - Unpaid Hours \n - Update \n - Quit")
 
 		if command == 'total earnings':
-			getTotalEarnings()
+			total = getTotalEarnings()
+			print(total)
 
 		if command == 'unpaid hours':
-			calcUnpaidHrs()
+			while(True):
+				unpaidCmd = ''
+				try:
+					unpaidCmd = input("Which Student? (Minju or Minsuk) ")
+				except EOFError: # EOF command quits programme
+					print()
+					sys.exit(0)
+
+				unpaid = calcUnpaidHrs(unpaidCmd)
+				if unpaid == None:
+					continue
+				else:
+					print(unpaid)
+					break
 
 		if command == 'update':
 			update()
@@ -408,7 +423,20 @@ def main():
 			print()
 			sys.exit(0)
 
-		if command == 'test':
-			getEarnings('minju')
+		if command == 'earnings':
+			while(True):
+				earnCmd = ''
+				try:
+					earnCmd = input("Which Student? (Minju or Minsuk) ")
+				except EOFError: # EOF command quits programme
+					print()
+					sys.exit(0)
+
+				earn = getEarnings(earnCmd)
+				if earn == None:
+					continue
+				else:
+					print(earn)
+					break
 
 main()
